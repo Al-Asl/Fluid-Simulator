@@ -1,0 +1,443 @@
+#pragma kernel BOUN
+#pragma kernel OBS_SPH
+#pragma kernel OBS_BOX
+
+#pragma kernel BCK_ADVECT
+#pragma kernel BFECC
+#pragma kernel CURL
+#pragma kernel CONFIN
+
+#pragma kernel EX_SPH_SCA
+#pragma kernel EX_SPH_DIR
+#pragma kernel EX_SPH_VOR
+#pragma kernel EX_SPH_OMN
+#pragma kernel EX_BOX_SCA
+#pragma kernel EX_BOX_DIR
+#pragma kernel EX_BOX_VOR
+#pragma kernel EX_BOX_OMN
+
+#pragma kernel DIV
+#pragma kernel JACOB
+#pragma kernel PROJ
+
+#pragma kernel CLR
+
+#pragma kernel GRAD
+
+#define GROUP_SIZE 8
+
+////////////////// Shared Variables //////////////////
+
+uint3 size;
+float3 texel_size;
+
+float time_step;
+float modulate;
+
+uint3 offset;
+float4x4 local_to_world;
+float4x4 world_to_local;
+float3 sphere_scale;
+float3 box_extent;
+
+Texture3D<float4> input0;
+Texture3D<float4> input1;
+Texture3D<float4> input2;
+RWTexture3D<float4> output0;
+RWTexture3D<float4> output1;
+
+Texture3D<float4> obstacles;
+Texture3D<float4> obstacles_velocity;
+
+//////////////////      Common      //////////////////
+
+//bilinear sampling ( sampling outside bounds will result with zero )
+float4 bSample(Texture3D<float4> tex, float3 id)
+{
+    uint3 p = floor(id);
+
+    float3 t = id - p;
+    float3 omt = 1 - t;
+    
+    float4 p000 = tex[p];
+    float4 p001 = tex[p + float3(1, 0, 0)];
+    float4 p010 = tex[p + float3(0, 1, 0)];
+    float4 p011 = tex[p + float3(1, 1, 0)];
+    float4 p100 = tex[p + float3(0, 0, 1)];
+    float4 p101 = tex[p + float3(1, 0, 1)];
+    float4 p110 = tex[p + float3(0, 1, 1)];
+    float4 p111 = tex[p + float3(1, 1, 1)];
+
+    return
+        ((p000 * omt.x + p001 * t.x) * omt.y +
+            (p010 * omt.x + p011 * t.x) * t.y) * omt.z +
+        ((p100 * omt.x + p101 * t.x) * omt.y +
+            (p110 * omt.x + p111 * t.x) * t.y) * t.z;
+}
+
+#define CROSSID(id)\
+uint3 l = id + uint3(-1, 0, 0);\
+uint3 r = id + uint3(1, 0, 0);\
+uint3 d = id + uint3(0, -1, 0);\
+uint3 u = id + uint3(0, 1, 0);\
+uint3 b = id + uint3(0, 0, -1);\
+uint3 f = id + uint3(0, 0, 1)
+
+//doesn't work correctly for non-uniform scaling, need to check other method
+float sdSphere(float3 p, float3 scale)
+{
+    float l = length(p);
+    float r = length((p / l) * scale);
+    return l - r;
+}
+
+float mapSphere(float3 p) { return sdSphere(p, sphere_scale); }
+
+//https://iquilezles.org/articles/distfunctions/
+float sdBox(float3 p, float3 b)
+{
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+float mapBox(float3 p) { return sdBox(p, box_extent); }
+
+#define GRADIENT_DD float2(0.0001,-0.0001)
+
+// https://iquilezles.org/articles/normalsSDF
+#define CAL_GRADIENT(pos,sdf) \
+GRADIENT_DD.xyy * sdf(pos + GRADIENT_DD.xyy) + \
+GRADIENT_DD.yyx * sdf(pos + GRADIENT_DD.yyx) + \
+GRADIENT_DD.yxy * sdf(pos + GRADIENT_DD.yxy) + \
+GRADIENT_DD.xxx * sdf(pos + GRADIENT_DD.xxx)
+
+float3 getObstVelocity(uint3 id)
+{
+    return obstacles_velocity[id].rgb;
+}
+
+bool isNonEmptyCell(uint3 id)
+{
+    return obstacles[id].r > 0.0;
+}
+
+bool isBoundaryCell(uint3 id)
+{
+    return obstacles[id].r > 0.9;
+}
+
+////////////////// Sphere Obstacle //////////////////
+
+#define DEFINE_OBS(name,map) \
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)] \
+void OBS_##name(uint3 id : SV_DispatchThreadID) \
+{ \
+id += offset; \
+float3 p = mul(world_to_local, float4(id + 0.5, 1)).xyz; \
+float dist = map(p); \
+float3 grad = CAL_GRADIENT(p, map); \
+grad = mul((float3x3)local_to_world, grad); \
+addObstacle(id, dist, abs(length(grad) / grad)); \
+}
+
+float3 obstacle_velocity_value;
+
+void addObstacle(uint3 id ,float dist, float3 abs_r_norm)
+{
+    float o = output0[id].x;
+
+    if (dist <= 0)
+    {
+        float texel = min(min(abs_r_norm.x, abs_r_norm.y), abs_r_norm.z);
+        //the first texel on the surface set to be a boundary, no need to override non-empty non-boundary cells
+        if (o == 0 || o > 0.9) {
+
+            if (-dist < texel)
+            {
+                o = 1;
+                output1[id] = float4(obstacle_velocity_value, 0);
+            }
+            else
+            {
+                o = 0.5;
+                output1[id] = 0;
+            }
+
+        }
+    }
+
+    output0[id] = o;
+}
+
+DEFINE_OBS(SPH,mapSphere)
+
+DEFINE_OBS(BOX,mapBox)
+
+//////////////////     Advection       //////////////////
+
+float advect_forward;
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void BCK_ADVECT(uint3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    float3 pos = id - (time_step * advect_forward * input0[id].xyz);
+    output0[id] = bSample(input1,pos) * modulate;
+}
+
+//////////////////       BEFCC         //////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void BFECC(uint3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    float3 pos = id - (time_step * input0[id].xyz);
+
+    float4 r;
+    float3 hsize = size * 0.5;
+    float3 diff = abs(hsize - id);
+
+    // Must use regular semi-Lagrangian advection instead of BFECC at the volume boundaries
+    if ((diff.x > (hsize.x - 4)) || (diff.y > (hsize.y - 4)) || (diff.z > (hsize.z - 4)))
+        r = bSample(input1, pos);
+    else
+        r = 1.5f * bSample(input1, pos) - 0.5f * bSample(input2, pos);
+
+    output0[id] = saturate(r) * modulate;
+}
+
+//////////////////        Curl         //////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void CURL(uint3 id : SV_DispatchThreadID)
+{
+    CROSSID(id);
+
+    float3 v_l = input0[l].xyz;
+    float3 v_r = input0[r].xyz;
+    float3 v_d = input0[d].xyz;
+    float3 v_u = input0[u].xyz;
+    float3 v_b = input0[b].xyz;
+    float3 v_f = input0[f].xyz;
+
+    output0[id] = 0.5 * float4(
+        ((v_u.z - v_b.z) - (v_f.y - v_d.y)),
+        ((v_f.x - v_b.x) - (v_r.z - v_l.z)),
+        ((v_r.y - v_l.y) - (v_u.x - v_d.x)), 0);
+}
+
+//////////////////     Confinement     //////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void CONFIN(uint3 id : SV_DispatchThreadID)
+{
+    CROSSID(id);
+
+    float3 c_c = input0[id].xyz;
+
+    float3 c_l = input0[l].xyz;
+    float3 c_r = input0[r].xyz;
+    float3 c_d = input0[d].xyz;
+    float3 c_u = input0[u].xyz;
+    float3 c_b = input0[b].xyz;
+    float3 c_f = input0[f].xyz;
+
+    float3 eta = 0.5 * float3(
+            length(c_r) - length(c_l),
+            length(c_u) - length(c_d),
+            length(c_f) - length(c_b));
+
+    eta = normalize(eta + float3(0.0001, 0.0001, 0.0001));
+
+    float4 v = output0[id] + time_step * modulate * float4(
+        eta.y * c_c.z - eta.z * c_c.y,
+        eta.z * c_c.x - eta.x * c_c.z,
+        eta.x * c_c.y - eta.y * c_c.x, 0);
+    v = clamp(-100, 100, v);
+    output0[id] = v;
+}
+
+//////////////////      External      //////////////////
+
+#define DEFINE_ADD(name,mask,value) \
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)] \
+void EX_##name(uint3 id : SV_DispatchThreadID) \
+{ \
+    id += offset; \
+    if (isNonEmptyCell(id)) \
+        return; \
+    float3 p = mul(world_to_local, float4(id + 0.5, 1)).xyz; \
+    float alpha = mask(p); \
+    output0[id] = output0[id] * (1 - alpha) + float4(value(p) * alpha, 0); \
+}
+
+float external_value;
+
+float getGaussian(float d)
+{
+    d = d * 2.4;
+    return max(0, exp(-d * d) - 0.0032) * 1.0032;
+}
+
+//used to add density, doesn't get affected by rotation
+float3 scalar(float3 p) { return float3(external_value, external_value, external_value); }
+float3 directional(float3 p) { return mul((float3x3)local_to_world,float3(0,0,external_value)); }
+float3 omni(float3 p) { return mul((float3x3)local_to_world, normalize(p) * external_value); }
+float3 vortex(float3 p) { return mul((float3x3)local_to_world, normalize(float3(p.z, 0, -p.x)) * external_value); }
+
+float sphereMask(float3 p)
+{
+    return max(0, -mapSphere(p));
+    float d = length(normalize(p) * sphere_scale);
+    return getGaussian(1 + mapSphere(p)/d );
+}
+
+DEFINE_ADD(SPH_SCA, sphereMask, scalar)
+DEFINE_ADD(SPH_DIR, sphereMask, directional)
+DEFINE_ADD(SPH_VOR, sphereMask, vortex)
+DEFINE_ADD(SPH_OMN, sphereMask, omni)
+
+float boxMask(float3 p)
+{
+    float3 ap = abs( abs(p) - box_extent );
+    return  getGaussian(1 + mapBox(p) / (ap.x > ap.y ?
+        (ap.x > ap.z ? box_extent.x : box_extent.z) :
+        (ap.y > ap.z ? box_extent.y : box_extent.z)));
+}
+
+DEFINE_ADD(BOX_SCA, boxMask, scalar)
+DEFINE_ADD(BOX_DIR, boxMask, directional)
+DEFINE_ADD(BOX_VOR, boxMask, vortex)
+DEFINE_ADD(BOX_OMN, boxMask, omni)
+
+//////////////////     Divergence     ///////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void DIV(uint3 id : SV_DispatchThreadID)
+{
+    CROSSID(id);
+
+    float3 v_l = input0[l].xyz;
+    float3 v_r = input0[r].xyz;
+    float3 v_d = input0[d].xyz;
+    float3 v_u = input0[u].xyz;
+    float3 v_b = input0[b].xyz;
+    float3 v_f = input0[f].xyz;
+
+    if (isBoundaryCell(l)) v_l = getObstVelocity(l);
+    if (isBoundaryCell(r)) v_r = getObstVelocity(r);
+    if (isBoundaryCell(d)) v_d = getObstVelocity(d);
+    if (isBoundaryCell(u)) v_u = getObstVelocity(u);
+    if (isBoundaryCell(b)) v_b = getObstVelocity(b);
+    if (isBoundaryCell(f)) v_f = getObstVelocity(f);
+
+    output0[id] = 0.5 *
+    ((v_r.x - v_l.x) + (v_u.y - v_d.y) + (v_f.z - v_b.z));
+}
+
+//////////////////      Jacobian      ///////////////////
+
+float4 jacob_params;
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void JACOB(uint3 id : SV_DispatchThreadID)
+{
+    CROSSID(id);
+
+    float4 p_c = input1[id];
+    float4 p_l = input1[l];
+    float4 p_r = input1[r];
+    float4 p_d = input1[d];
+    float4 p_u = input1[u];
+    float4 p_b = input1[b];
+    float4 p_f = input1[f];
+
+    float4 div = input0[id];
+
+    if (isBoundaryCell(l)) p_l = p_c;
+    if (isBoundaryCell(r)) p_r = p_c;
+    if (isBoundaryCell(d)) p_d = p_c;
+    if (isBoundaryCell(u)) p_u = p_c;
+    if (isBoundaryCell(b)) p_b = p_c;
+    if (isBoundaryCell(f)) p_f = p_c;
+    
+    output0[id] = (p_l + p_r + p_d + p_u + p_b + p_f + jacob_params.x * div) * jacob_params.y;
+}
+
+//////////////////      Project       ///////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void PROJ(uint3 id : SV_DispatchThreadID)
+{
+    if (isBoundaryCell(id)) {
+        output0[id] = float4(getObstVelocity(id),0);
+        return;
+    }
+
+    CROSSID(id);
+
+    float p_c = input1[id].r;
+    float p_l = input1[l].r;
+    float p_r = input1[r].r;
+    float p_d = input1[d].r;
+    float p_u = input1[u].r;
+    float p_b = input1[b].r;
+    float p_f = input1[f].r;
+
+    float3 obstV = float3(0, 0, 0);
+    float3 vMask = float3(1, 1, 1);
+
+    if (isBoundaryCell(l)) { p_l = p_c; obstV.x = getObstVelocity(l).x; vMask.x = 0; }
+    if (isBoundaryCell(r)) { p_r = p_c; obstV.x = getObstVelocity(r).x; vMask.x = 0; }
+    if (isBoundaryCell(d)) { p_d = p_c; obstV.y = getObstVelocity(d).x; vMask.y = 0; }
+    if (isBoundaryCell(u)) { p_u = p_c; obstV.y = getObstVelocity(u).x; vMask.y = 0; }
+    if (isBoundaryCell(b)) { p_b = p_c; obstV.z = getObstVelocity(b).x; vMask.z = 0; }
+    if (isBoundaryCell(f)) { p_f = p_c; obstV.z = getObstVelocity(f).x; vMask.z = 0; }
+
+    float4 v = 0;
+    v.rgb = input0[id].rgb -
+        (0.5 * modulate * float3(p_r - p_l, p_u - p_d, p_f - p_b));
+
+    v.rgb = (vMask * v.rgb) + obstV;
+    output0[id] = v;
+}
+
+//////////////////      Boundary      //////////////////
+
+float4x4 boundary_id_mat;
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
+void BOUN(uint3 id : SV_DispatchThreadID)
+{
+    output0[(uint3)mul(boundary_id_mat, float4(id, 1))] = 1;
+}
+
+//////////////////       Clear       //////////////////
+
+float4 clear_value;
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void CLR(uint3 id : SV_DispatchThreadID)
+{
+    output0[id] = clear_value;
+}
+
+//////////////////      Gradient      ///////////////////
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void GRAD(uint3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    CROSSID(id);
+
+    output0[id] = float4(
+        input0[r].x - input0[l].x,
+        input0[u].x - input0[d].x,
+        input0[f].x - input0[b].x, 0);
+}

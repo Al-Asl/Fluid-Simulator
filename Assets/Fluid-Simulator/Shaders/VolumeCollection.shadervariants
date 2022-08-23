@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!200 &20000000
+ShaderVariantCollection:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: VolumeCollection
+  m_Shaders:
+  - first: {fileID: 4800000, guid: 6bf9e2ee68a972b4cbc5aa22ed42252d, type: 3}
+    second:
+      variants:
+      - keywords: FOG_EXP LIGHT_GRAD
+        passType: 4
+      - keywords: FOG_EXP LIGHT_MARCH
+        passType: 4
+      - keywords: FOG_EXP2 LIGHT_GRAD
+        passType: 4
+      - keywords: FOG_EXP2 LIGHT_MARCH
+        passType: 4
+      - keywords: FOG_LINEAR LIGHT_GRAD
+        passType: 4
+      - keywords: FOG_LINEAR LIGHT_MARCH
+        passType: 4
+      - keywords: HARD_SHADOW LIGHT_GRAD
+        passType: 4
+      - keywords: LIGHT_GRAD
+        passType: 4
+  - first: {fileID: 4800000, guid: 7024b14c7e9fbb8469e072932d4b4ee9, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: FOG_EXP
+        passType: 0
+      - keywords: FOG_EXP2
+        passType: 0
+      - keywords: FOG_LINEAR
+        passType: 0
