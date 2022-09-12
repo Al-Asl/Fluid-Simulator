@@ -18,6 +18,7 @@ Shader "Unlit/Volume"
             #pragma multi_compile_fog
             #pragma multi_compile _ HARD_SHADOW SOFT_SHADOW
             #pragma multi_compile LIGHT_GRAD LIGHT_MARCH
+            #pragma multi_compile _ SDF_MARCH
 
             #include "UnityCG.cginc"
             #include "UnityLightingCommon.cginc"
@@ -25,6 +26,7 @@ Shader "Unlit/Volume"
             #include "./Shadow.cginc"
 
             sampler3D _Gradient;
+            sampler3D _SDF;
 
             float3 _BaseColor;
             float4 _VLightParams;
@@ -61,12 +63,34 @@ Shader "Unlit/Volume"
                 return 1;
             }
 
+            float raymarch(marchInput mi)
+            {
+                float t = mi.tmin + _SampleParam.w*2;
+                for (int i = 0; i < 50; i++)
+                {
+                    if (t > mi.tmax)
+                        break;
+
+                    float3 uv = UVW(mi.ro + mi.rd * t);
+                    float d = tex3Dlod(_SDF, float4(uv, 0)).w * _SampleParam.w;
+
+                    if (d < 0.1 * t)
+                        return t;
+
+                    t += max(_MarchParams.x, d);
+                }
+                return t;
+            }
+
             float getStep(float t) { return  min(_MarchParams.y, _MarchParams.x + t * _MarchParams.z); }
 
             fixed4 frag(v2f i) : SV_Target
             {
                 marchInput mi = getInput(i);
 
+#if defined(SDF_MARCH)
+                mi.tmin = raymarch(mi);
+#endif
                 float t = mi.tmin;
                 float step = getStep(t);
                 float4 col = 0;

@@ -26,6 +26,8 @@ public class FluidSimulator : System.IDisposable
     {
         public bool enableGradient;
         public int smoothGradientIterations;
+        public bool enableSDF;
+        public float sdfThreshold;
     }
 
     [SerializeField]
@@ -46,6 +48,7 @@ public class FluidSimulator : System.IDisposable
     public RenderTexture Obstacles => obstacles;
     public RenderTexture ObstaclesVelocity => obstacles_velocity;
     public RenderTexture DensityGradient => temp_vector;
+    public RenderTexture SDF => sdf;
 
     [SerializeField]
     private ComputeShader compute;
@@ -68,6 +71,8 @@ public class FluidSimulator : System.IDisposable
     private RenderTexture temp_vector;
     [SerializeField]
     private RenderTexture temp_scalar;
+    [SerializeField]
+    private RenderTexture sdf;
 
     [SerializeField]
     private SpatialDesc desc;
@@ -130,6 +135,7 @@ public class FluidSimulator : System.IDisposable
         List<FluidCollider> colliders,List<Vector3> collidersVelocities)
     {
         compute.SetInts("size", desc.resolution.x , desc.resolution.y , desc.resolution.z);
+        compute.SetVector("hsize", (Vector3)(desc.resolution - Vector3Int.one ) * 0.5f );
         compute.SetVector("texel_size", desc.texelSize);
         compute.SetFloat("time_step", dt);
 
@@ -404,13 +410,60 @@ public class FluidSimulator : System.IDisposable
         if(renderAttachmentSetting.enableGradient)
         {
             Gradient(density_0, temp_vector);
-            for (int i = 0; i < renderAttachmentSetting.smoothGradientIterations/2; i++)
+            for (int i = 0; i < renderAttachmentSetting.smoothGradientIterations; i++)
             {
                 Diffuse(temp_vector, velocity_1, dt);
-                Diffuse(velocity_1, temp_vector, dt);
+                Swap(ref temp_vector, ref velocity_1);
             }
             Clear(velocity_1, Color.black);
         }
+
+        if(renderAttachmentSetting.enableSDF)
+        {
+            var res = Mathf.Max(desc.resolution.x, desc.resolution.y, desc.resolution.z);
+            var iter = (int)Mathf.Log(Mathf.NextPowerOfTwo(res),2);
+
+            Step(density_0, sdf, renderAttachmentSetting.sdfThreshold);
+            for (int i = iter - 1; i >= 0 ; i--)
+            {
+                JFA(sdf, velocity_1, i);
+                Swap(ref sdf, ref velocity_1);
+            }
+            Clear(velocity_1, Color.black);
+        }
+    }
+
+    private void Step(RenderTexture source,RenderTexture target,float value)
+    {
+        var kernel = compute.FindKernel("JFA_INIT");
+        SetObstacleTextures(kernel);
+        compute.SetFloat("modulate", value);
+        compute.SetTexture(kernel, "input0", source);
+        compute.SetTexture(kernel, "output0", target);
+
+        compute.Dispatch(kernel, desc.groupCount.x, desc.groupCount.y, desc.groupCount.z);
+    }
+
+    private void JFA(RenderTexture source, RenderTexture target, int pow)
+    {
+        var kernel = compute.FindKernel("JFA");
+        SetObstacleTextures(kernel);
+        compute.SetInt("jfa_step", (int)Mathf.Pow(2, pow));
+        compute.SetTexture(kernel, "input0", source);
+        compute.SetTexture(kernel, "output0", target);
+
+        compute.Dispatch(kernel, desc.groupCount.x, desc.groupCount.y, desc.groupCount.z);
+    }
+
+    private void AmbOc(RenderTexture sdf, RenderTexture gradient, RenderTexture target)
+    {
+        var kernel = compute.FindKernel("AMBOC");
+        SetObstacleTextures(kernel);
+        compute.SetTexture(kernel, "input0", sdf);
+        compute.SetTexture(kernel, "input1", gradient);
+        compute.SetTexture(kernel, "output0", target);
+
+        compute.Dispatch(kernel, desc.groupCount.x, desc.groupCount.y, desc.groupCount.z);
     }
 
     private void Diffuse(RenderTexture source, RenderTexture target, float diffuseFactor)
@@ -469,6 +522,7 @@ public class FluidSimulator : System.IDisposable
         pressure?.Release();
         temp_scalar?.Release();
         temp_vector?.Release();
+        sdf?.Release();
     }
 
     private void InitRT()
@@ -504,6 +558,8 @@ public class FluidSimulator : System.IDisposable
         velocity_1.Create();
         temp_vector = new RenderTexture(desc);
         temp_vector.Create();
+        sdf = new RenderTexture(desc);
+        sdf.Create();
 
         desc.graphicsFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.R8_UNorm;
         obstacles = new RenderTexture(desc);

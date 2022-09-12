@@ -24,11 +24,17 @@
 
 #pragma kernel GRAD
 
+#pragma kernel JFA_INIT
+#pragma kernel JFA
+
+#pragma kernel AMBOC
+
 #define GROUP_SIZE 8
 
 ////////////////// Shared Variables //////////////////
 
 uint3 size;
+float3 hsize;
 float3 texel_size;
 
 float time_step;
@@ -83,12 +89,11 @@ uint3 u = id + uint3(0, 1, 0);\
 uint3 b = id + uint3(0, 0, -1);\
 uint3 f = id + uint3(0, 0, 1)
 
-//doesn't work correctly for non-uniform scaling, need to check other method
 float sdSphere(float3 p, float3 scale)
 {
     float l = length(p);
-    float r = length((p / l) * scale);
-    return l - r;
+    float3 d = p / (scale * l);
+    return l - rsqrt(dot(d, d));
 }
 
 float mapSphere(float3 p) { return sdSphere(p, sphere_scale); }
@@ -128,6 +133,12 @@ bool isBoundaryCell(uint3 id)
 
 ////////////////// Sphere Obstacle //////////////////
 
+float getTexelSize(float3 grad)
+{
+    float3 g = abs(length(grad) / grad);
+    return min(min(g.x, g.y), g.z);
+}
+
 #define DEFINE_OBS(name,map) \
 [numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)] \
 void OBS_##name(uint3 id : SV_DispatchThreadID) \
@@ -137,18 +148,18 @@ float3 p = mul(world_to_local, float4(id + 0.5, 1)).xyz; \
 float dist = map(p); \
 float3 grad = CAL_GRADIENT(p, map); \
 grad = mul((float3x3)local_to_world, grad); \
-addObstacle(id, dist, abs(length(grad) / grad)); \
+addObstacle(id, dist, grad); \
 }
 
 float3 obstacle_velocity_value;
 
-void addObstacle(uint3 id ,float dist, float3 abs_r_norm)
+void addObstacle(uint3 id ,float dist, float3 grad)
 {
     float o = output0[id].x;
 
     if (dist <= 0)
     {
-        float texel = min(min(abs_r_norm.x, abs_r_norm.y), abs_r_norm.z);
+        float texel = getTexelSize(grad);
         //the first texel on the surface set to be a boundary, no need to override non-empty non-boundary cells
         if (o == 0 || o > 0.9) {
 
@@ -190,7 +201,7 @@ void BCK_ADVECT(uint3 id : SV_DispatchThreadID)
 //////////////////       BEFCC         //////////////////
 
 [numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
-void BFECC(uint3 id : SV_DispatchThreadID)
+void BFECC(int3 id : SV_DispatchThreadID)
 {
     if (isNonEmptyCell(id))
         return;
@@ -198,11 +209,9 @@ void BFECC(uint3 id : SV_DispatchThreadID)
     float3 pos = id - (time_step * input0[id].xyz);
 
     float4 r;
-    float3 hsize = size * 0.5;
-    float3 diff = abs(hsize - id);
 
     // Must use regular semi-Lagrangian advection instead of BFECC at the volume boundaries
-    if ((diff.x > (hsize.x - 4)) || (diff.y > (hsize.y - 4)) || (diff.z > (hsize.z - 4)))
+    if ( any(abs(hsize - id) > hsize - 4))
         r = bSample(input1, pos);
     else
         r = 1.5f * bSample(input1, pos) - 0.5f * bSample(input2, pos);
@@ -291,9 +300,9 @@ float3 vortex(float3 p) { return mul((float3x3)local_to_world, normalize(float3(
 
 float sphereMask(float3 p)
 {
-    return max(0, -mapSphere(p));
-    float d = length(normalize(p) * sphere_scale);
-    return getGaussian(1 + mapSphere(p)/d );
+    float l = length(p);
+    float3 d = p / (sphere_scale * l);
+    return getGaussian( l/rsqrt(dot(d, d)) );
 }
 
 DEFINE_ADD(SPH_SCA, sphereMask, scalar)
@@ -303,10 +312,8 @@ DEFINE_ADD(SPH_OMN, sphereMask, omni)
 
 float boxMask(float3 p)
 {
-    float3 ap = abs( abs(p) - box_extent );
-    return  getGaussian(1 + mapBox(p) / (ap.x > ap.y ?
-        (ap.x > ap.z ? box_extent.x : box_extent.z) :
-        (ap.y > ap.z ? box_extent.y : box_extent.z)));
+    float3 ap = abs(p)/box_extent;
+    return getGaussian(max(max(ap.x, ap.y), ap.z));
 }
 
 DEFINE_ADD(BOX_SCA, boxMask, scalar)
@@ -440,4 +447,80 @@ void GRAD(uint3 id : SV_DispatchThreadID)
         input0[r].x - input0[l].x,
         input0[u].x - input0[d].x,
         input0[f].x - input0[b].x, 0);
+}
+
+//////////////////       JFA       ///////////////////
+
+//Jump Flooding in GPU with Applications to Voronoi Diagram and Distance Transform
+//Guodong Rong | Tiow-Seng Tan
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void JFA_INIT(uint3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    output0[id] = float4(id , step(modulate, input0[id].x) * 2 - 1);
+}
+
+int jfa_step;
+
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void JFA(int3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    float4 res = 0;
+    res.w = 1000000;
+
+    for (int k = -1; k < 2; k++)
+        for (int j = -1; j < 2; j++)
+            for (int i = -1; i < 2; i++)
+            {
+                int3 index = int3(i, j, k) * jfa_step + id;
+
+                if (any(abs(index - hsize) > hsize))
+                    continue;
+
+                float4 data = input0[index];
+                float l = length(data.xyz - id);
+
+                if (l < res.w && data.w > -0.5)
+                    res = float4(data.xyz, l);
+            }
+
+    output0[id] = res;
+}
+
+//////////////////       Ambient Occlusion       ///////////////////
+
+//by Inigo Quilez
+[numthreads(GROUP_SIZE, GROUP_SIZE, GROUP_SIZE)]
+void AMBOC(uint3 id : SV_DispatchThreadID)
+{
+    if (isNonEmptyCell(id))
+        return;
+
+    float dist = input0[id].w;
+    if (dist <= 0 || dist > 5) {
+        output0[id] = 1;
+        return;
+    }
+
+    float3 g = input1[id].xyz;
+    float texel = getTexelSize(g);
+    float3 normal = -normalize(g);
+
+    float occ = 0;
+    float sca = 1;
+    for (int i = 0; i < 5; i++)
+    {
+        float h = dist + (i + 1) * texel;
+        float d = input0[id + h * normal].w;
+        occ += (h - d) * sca;
+        sca *= 0.95;
+        if (occ > 0.35) break;
+    }
+    output0[id] = clamp(1.0 - 3.0 * occ, 0.0, 1.0);
 }

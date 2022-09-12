@@ -28,7 +28,7 @@ sampler2D _CameraDepthTexture;
 
 float3 _BoundsMin;
 float3 _BoundsMax;
-float3 _SampleParam;
+float4 _SampleParam;
 float4 _MarchParams;
 
 sampler3D _Volume;
@@ -121,7 +121,7 @@ marchInput getInput(v2f i)
     return o;
 }
 
-#define UVW(pos) (pos - _BoundsMin)*_SampleParam
+#define UVW(pos) (pos - _BoundsMin)*_SampleParam.xyz
 #define SAMPLE(uv) tex3Dlod(_Volume,float4(uv,0))
 
 #endif

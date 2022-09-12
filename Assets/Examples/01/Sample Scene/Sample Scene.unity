@@ -802,7 +802,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 2
-  value: 109
+  value: 300
   shapeType: 0
   shape:
     rid: 8975526115239527163
@@ -812,24 +812,7 @@ MonoBehaviour:
     - rid: 8975526115239527163
       type: {class: Sphere, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.90936977
-          e01: 0
-          e02: 0.4159891
-          e03: -0.7859602
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 0.87
-          e20: -0.4159891
-          e21: 0
-          e22: 0.90936977
-          e23: 3.415709
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
-        radius: 0.5
+        radius: 0.8
         center: {x: 0, y: 0, z: 0}
 --- !u!4 &362161428
 Transform:
@@ -1493,7 +1476,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 2
-  value: 109
+  value: 300
   shapeType: 0
   shape:
     rid: 8975526115239527162
@@ -1503,24 +1486,7 @@ MonoBehaviour:
     - rid: 8975526115239527162
       type: {class: Sphere, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.90936977
-          e01: 0
-          e02: 0.4159891
-          e03: 0.5110483
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 0.87
-          e20: -0.4159891
-          e21: 0
-          e22: 0.90936977
-          e23: -0.8048384
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
-        radius: 0.5
+        radius: 0.8
         center: {x: 0, y: 0, z: 0}
 --- !u!1 &512733120
 GameObject:
@@ -1578,23 +1544,6 @@ MonoBehaviour:
     - rid: 8975526130589893602
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.7
-          e01: 0
-          e02: 0
-          e03: -3.46
-          e10: 0
-          e11: 2
-          e12: 0
-          e13: 1
-          e20: 0
-          e21: 0
-          e22: 0.7
-          e23: -1.3500001
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: 0, z: 0}
         size: {x: 1, y: 1, z: 1}
 --- !u!65 &512733123
@@ -1813,23 +1762,6 @@ MonoBehaviour:
     - rid: 8975526130589893602
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.7
-          e01: 0
-          e02: 0
-          e03: -3.46
-          e10: 0
-          e11: 2
-          e12: 0
-          e13: 1
-          e20: 0
-          e21: 0
-          e22: 0.7
-          e23: -1.3500001
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: 0, z: 0}
         size: {x: 1, y: 1, z: 1}
 --- !u!65 &610327061
@@ -2267,7 +2199,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 0
-  value: 10000
+  value: 50000
   shapeType: 1
   shape:
     rid: 8975526128452109293
@@ -2277,25 +2209,8 @@ MonoBehaviour:
     - rid: 8975526128452109293
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 1
-          e01: 0
-          e02: 0
-          e03: -0.17000008
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 1
-          e20: 0
-          e21: 0
-          e22: 1
-          e23: 2.0299997
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: 0, z: 1.5}
-        size: {x: 4, y: 4, z: 8}
+        size: {x: 4, y: 3, z: 8}
 --- !u!1 &909294714
 GameObject:
   m_ObjectHideFlags: 0
@@ -2546,23 +2461,6 @@ MonoBehaviour:
     - rid: 8975526130589893602
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.7
-          e01: 0
-          e02: 0
-          e03: -3.46
-          e10: 0
-          e11: 2
-          e12: 0
-          e13: 1
-          e20: 0
-          e21: 0
-          e22: 0.7
-          e23: -1.3500001
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: 0, z: 0}
         size: {x: 1, y: 1, z: 1}
 --- !u!65 &955037013
@@ -2770,7 +2668,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 1
-  value: 100
+  value: 100000
   shapeType: 0
   shape:
     rid: 8975526115239526848
@@ -2780,23 +2678,6 @@ MonoBehaviour:
     - rid: 8975526115239526848
       type: {class: Sphere, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 1
-          e01: 0
-          e02: 0
-          e03: -0.50999975
-          e10: 0
-          e11: -0.00000011920929
-          e12: -1.0000001
-          e13: 1.12
-          e20: 0
-          e21: 1.0000001
-          e22: -0.00000011920929
-          e23: 1.5099998
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         radius: 2
         center: {x: 0, y: 0, z: 0}
 --- !u!1001 &1010528232
@@ -2951,6 +2832,7 @@ MonoBehaviour:
     pressure: {fileID: 0}
     temp_vector: {fileID: 0}
     temp_scalar: {fileID: 0}
+    sdf: {fileID: 0}
     desc:
       resolution: {x: 160, y: 64, z: 160}
       texelSize: {x: 0.05, y: 0.125, z: 0.05}
@@ -2962,6 +2844,8 @@ MonoBehaviour:
     renderAttachmentSetting:
       enableGradient: 1
       smoothGradientIterations: 0
+      enableSDF: 0
+      sdfThreshold: 0.05
   _renderType: 0
   references:
     version: 2
@@ -2989,6 +2873,7 @@ MonoBehaviour:
           pressure: {fileID: 0}
           temp_vector: {fileID: 0}
           temp_scalar: {fileID: 0}
+          sdf: {fileID: 0}
           desc:
             resolution: {x: 160, y: 64, z: 160}
             texelSize: {x: 0.05, y: 0.125, z: 0.05}
@@ -3000,6 +2885,8 @@ MonoBehaviour:
           renderAttachmentSetting:
             enableGradient: 1
             smoothGradientIterations: 0
+            enableSDF: 0
+            sdfThreshold: 0.05
         lightingMode: 0
         shadowMode: 1
         DensityMulti: 6
@@ -3007,10 +2894,12 @@ MonoBehaviour:
         DensityLightingThrehold: 0.05
         indirectMulti: 0.3
         SmoothIterations: 0
-        LightMarchIterations: 5
-        LightMarchStep: 0.1
-        LightMarchLightMulti: 30
+        LightMarchIterations: 20
+        LightMarchStep: 0.025
+        LightMarchLightMulti: 5
         BaseColor: {r: 0.7264151, g: 0.4673738, b: 0.22272162, a: 0}
+        useSDF: 0
+        SDFThreshold: 0.05
 --- !u!4 &1216117580
 Transform:
   m_ObjectHideFlags: 0
@@ -3591,7 +3480,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 2
-  value: 109
+  value: 300
   shapeType: 0
   shape:
     rid: 8975526115239527160
@@ -3601,24 +3490,7 @@ MonoBehaviour:
     - rid: 8975526115239527160
       type: {class: Sphere, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.90936977
-          e01: 0
-          e02: 0.4159891
-          e03: -2.3991532
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 0.87
-          e20: -0.4159891
-          e21: 0
-          e22: 0.90936977
-          e23: 1.0192876
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
-        radius: 0.5
+        radius: 0.8
         center: {x: 0, y: 0, z: 0}
 --- !u!1 &1474740308 stripped
 GameObject:
@@ -4264,23 +4136,6 @@ MonoBehaviour:
     - rid: 8975526130589893602
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.7
-          e01: 0
-          e02: 0
-          e03: -3.46
-          e10: 0
-          e11: 2
-          e12: 0
-          e13: 1
-          e20: 0
-          e21: 0
-          e22: 0.7
-          e23: -1.3500001
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: 0, z: 0}
         size: {x: 1, y: 1, z: 1}
 --- !u!65 &1896232061
@@ -4887,7 +4742,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: adf6bbfa4b3603649b440a8b5e029826, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  amount: 500
+  amount: 200
   shapeType: 1
   shape:
     rid: 8975526115239527159
@@ -4897,23 +4752,6 @@ MonoBehaviour:
     - rid: 8975526115239527159
       type: {class: Box, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 1
-          e01: 0
-          e02: 0
-          e03: -0.3699999
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 0.87
-          e20: 0
-          e21: 0
-          e22: 1
-          e23: 1.5799999
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
         center: {x: 0, y: -0.54, z: 0}
         size: {x: 4.55, y: 1, z: 4.14}
 --- !u!4 &2083711498
@@ -4976,7 +4814,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motorType: 2
-  value: 109
+  value: 300
   shapeType: 0
   shape:
     rid: 8975526115239527161
@@ -4986,22 +4824,5 @@ MonoBehaviour:
     - rid: 8975526115239527161
       type: {class: Sphere, ns: , asm: Assembly-CSharp}
       data:
-        localToWorld:
-          e00: 0.90936977
-          e01: 0
-          e02: 0.4159891
-          e03: 2.2197294
-          e10: 0
-          e11: 1
-          e12: 0
-          e13: 0.87
-          e20: -0.4159891
-          e21: 0
-          e22: 0.90936977
-          e23: 2.117217
-          e30: 0
-          e31: 0
-          e32: 0
-          e33: 1
-        radius: 0.5
+        radius: 0.8
         center: {x: 0, y: 0, z: 0}

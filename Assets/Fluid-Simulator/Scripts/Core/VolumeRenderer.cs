@@ -60,10 +60,11 @@ public abstract class BaseVolumeRenderer : System.IDisposable
 
         material.SetVector("_BoundsMin", bounds.min);
         material.SetVector("_BoundsMax", bounds.max);
-        material.SetVector("_SampleParam", new Vector3(
+        material.SetVector("_SampleParam", new Vector4(
             (float)simulator.Desc.texelPerUnit / simulator.Desc.resolution.x,
             (float)simulator.Desc.texelPerUnit / simulator.Desc.resolution.y,
-            (float)simulator.Desc.texelPerUnit / simulator.Desc.resolution.z));
+            (float)simulator.Desc.texelPerUnit / simulator.Desc.resolution.z,
+            1f/simulator.Desc.texelPerUnit));
 
         float maxLength = bounds.size.magnitude;
 
@@ -108,11 +109,13 @@ public class VolumeRenderer : BaseVolumeRenderer
     [Space]
     public int SmoothIterations;
     [Space]
-    public int LightMarchIterations = 5;
-    public float LightMarchStep = 0.1f;
-    public float LightMarchLightMulti = 30f;
+    public int LightMarchIterations = 20;
+    public float LightMarchStep = 0.025f;
+    public float LightMarchLightMulti = 5f;
     [Space]
     public Color BaseColor;
+    public bool useSDF;
+    public float SDFThreshold = 0.05f;
 
     protected override string shader => "Unlit/Volume";
 
@@ -125,6 +128,20 @@ public class VolumeRenderer : BaseVolumeRenderer
     {
         material.SetTexture("_Volume", simulator.Density);
         material.SetTexture("_Gradient", simulator.DensityGradient);
+        material.SetTexture("_SDF", simulator.SDF);
+
+        if(useSDF)
+        {
+            material.EnableKeyword("SDF_MARCH");
+            simulator.RenderAttachmentSettings.sdfThreshold = SDFThreshold;
+            simulator.RenderAttachmentSettings.enableSDF = true;
+        }
+        else
+        {
+            material.DisableKeyword("SDF_MARCH");
+            simulator.RenderAttachmentSettings.enableSDF = false;
+        }
+
 
         material.SetColor("_BaseColor", BaseColor);
         material.SetVector("_VLightParams", new Vector4(
@@ -185,7 +202,8 @@ public class VolumeDebugRenderer : BaseVolumeRenderer
         Velocity,
         Pressure,
         Obstacles,
-        ObstaclesVelocity
+        ObstaclesVelocity,
+        SDF
     }
 
     [Space]
@@ -231,6 +249,8 @@ public class VolumeDebugRenderer : BaseVolumeRenderer
                 return simulator.Obstacles;
             case Target.ObstaclesVelocity:
                 return simulator.ObstaclesVelocity;
+            case Target.SDF:
+                return simulator.SDF;
         }
         return null;
     }
